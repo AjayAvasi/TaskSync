@@ -1,0 +1,50 @@
+Team:
+Manager - Timmy(Github: timmycodes)
+Employee - Alex(Github: alexm)
+Employee - Sarah(Github: sarah_)
+
+Current Datetime: Sat Sep 20, 2025 1:07PM
+
+
+[Video Call Transcript – Startup Weekly Standup]
+Timmy (Manager):
+Alright team, thanks for hopping on. Let’s do a quick check-in. As you know, our pizza analytics startup is moving fast — we need to get the MVP ready to demo next month. I’ll assign tasks today so we can stay on track.
+Alex (Developer 1):
+Sounds good, Timmy.
+Sarah (Developer 2):
+Yep, ready.
+Timmy:
+Okay, first up — Alex. I need you to focus on our data ingestion pipeline. We’ve been pulling in reviews from Yelp and Google Maps, but it’s messy. I want you to:
+Set up a scheduled ETL job that runs daily.
+Normalize the review data into our Postgres schema.
+Add logging so we can track failed ingestions.
+How does that sound?
+Alex:
+Makes sense. I’ll use Airflow for scheduling, and write transformations in Python. For logging, should I push events into our existing monitoring dashboard?
+Timmy:
+Exactly. Send logs to Grafana via Prometheus metrics.
+Timmy:
+Now, Sarah — your focus is on the frontend dashboard. We need restaurant owners to visualize insights easily. Your tasks are:
+Build a React component that shows average ratings by day of week.
+Implement a map view where restaurants are plotted with color-coded performance indicators.
+Connect the dashboard to our Flask backend API.
+Sarah:
+Got it. For the map view, should I use Leaflet or Google Maps API?
+Timmy:
+Let’s go with Leaflet — it’s lighter, and we can self-host tiles if needed.
+Timmy:
+Finally, big picture: I’ll handle getting us some sample client data from local pizza chains. I’ll also work on refining our business metrics so we know what features to prioritize.
+Before we wrap up — Alex, what’s your ETA on the ingestion pipeline?
+Alex:
+I can get the initial ETL up by Wednesday, then polish logging by Friday.
+Timmy:
+Perfect. Sarah, how about the frontend tasks?
+Sarah:
+I’ll have the rating visualization ready in three days. The map view might take until next week, depending on API integration.
+Timmy:
+That’s fine. Let’s regroup next Monday, same time. Thanks team, this was productive.
+Alex:
+Thanks. Catch you all later.
+Sarah:
+Bye!
+[Call Ends]

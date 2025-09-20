@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minimal Video Call</title>
+    <style>
+    body {
+        margin: 0;
+        padding: 20px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        background: #f9fafb;
+        color: #111827;
+    }
+
+    .container {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+
+    .header {
+        text-align: center;
+        margin-bottom: 20px;
+    }
+
+    .header h1 {
+        font-size: 24px;
+        font-weight: 600;
+        color: #1f2937;
+    }
+
+    .card {
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+
+    .room-info {
+        font-size: 14px;
+        color: #374151;
+    }
+
+    .name-input label {
+        display: block;
+        margin-bottom: 6px;
+        font-weight: 500;
+        color: #374151;
+    }
+
+    .name-input input {
+        padding: 10px 14px;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        font-size: 14px;
+        width: 220px;
+        text-align: center;
+        transition: all 0.2s;
+    }
+
+    .name-input input:focus {
+        outline: none;
+        border-color: #6366f1;
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+    }
+
+    .controls {
+        text-align: center;
+        margin-bottom: 20px;
+    }
+
+    button {
+        background: #6366f1;
+        color: #fff;
+        border: none;
+        padding: 10px 18px;
+        margin: 0 6px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: background 0.2s;
+    }
+
+    button:hover {
+        background: #4f46e5;
+    }
+
+    button:disabled {
+        background: #d1d5db;
+        cursor: not-allowed;
+    }
+
+    .video-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+
+    .video-container {
+        position: relative;
+        background: #000;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    video {
+        width: 100%;
+        height: auto;
+        min-height: 200px;
+        object-fit: cover;
+    }
+
+    .video-label {
+        position: absolute;
+        bottom: 10px;
+        left: 10px;
+        background: rgba(0,0,0,0.6);
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-size: 13px;
+        color: white;
+    }
+
+    .status {
+        text-align: center;
+        font-size: 14px;
+        margin: 10px 0;
+        padding: 12px;
+        background: #f3f4f6;
+        border-radius: 10px;
+        color: #374151;
+    }
+
+    .hidden {
+        display: none;
+    }
+</style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Minimal Video Call</h1>
+        </div>
+        
+        <div class="room-info">
+            <strong>Room:</strong> <span id="roomName">Not connected</span>
+            <br>
+            <strong>Users:</strong> <span id="userCount">0</span>
+        </div>
+        
+        <div class="name-input" id="nameInput">
+            <label for="userName">Your Name:</label>
+            <input type="text" id="userName" placeholder="Enter your name" maxlength="20">
+        </div>
+        
+        <div class="controls">
+            <button id="joinBtn">Join Call</button>
+            <button id="leaveBtn" disabled>Leave Call</button>
+            <button id="muteBtn" disabled>Mute</button>
+            <button id="videoBtn" disabled>Turn Off Video</button>
+        </div>
+        
+        <div class="status" id="status">
+            Enter your name and a room name in the URL (e.g., ?room=myroom&name=John) and click Join Call
+        </div>
+        
+        <div class="video-grid" id="videoGrid">
+            <!-- Videos will be added here dynamically -->
+        </div>
+        
+        <div class="card">
+            <h3>Live Transcriptions</h3>
+            <div id="transcriptionList" style="max-height: 300px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; background: #f9fafb;">
+                <p style="color: #6b7280; font-style: italic;">Transcriptions will appear here...</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
+    <script>
+        // Cookie utility functions
+        function setCookie(name, value, days = 30) {
+            const expires = new Date();
+            expires.setTime(expires.getTime() + (days * 24 * 60 * 60 * 1000));
+            document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/`;
+        }
+        
+        function getCookie(name) {
+            const nameEQ = name + "=";
+            const ca = document.cookie.split(';');
+            for(let i = 0; i < ca.length; i++) {
+                let c = ca[i];
+                while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+                if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+            }
+            return null;
+        }
+
+        class VideoCall {
+            constructor() {
+                this.socket = null;
+                this.localStream = null;
+                this.peers = {};
+                this.room = null;
+                this.userName = '';
+                this.userNames = {}; // Store names of other users
+                this.isAudioMuted = false;
+                this.isVideoOff = false;
+                this.mediaRecorder = null;
+                this.recordingInterval = null;
+                this.isRecording = false;
+                this.autoJoin = false;
+                
+                this.init();
+            }
+            
+            init() {
+                const urlParams = new URLSearchParams(window.location.search);
+                this.room = urlParams.get('room') || urlParams.get('code') || 'default';
+                document.getElementById('roomName').textContent = this.room;
+                
+                // Get name from cookie, URL parameter, or localStorage
+                const cookieName = getCookie('userFullName');
+                const urlName = urlParams.get('name');
+                const savedName = localStorage.getItem('videoCallUserName');
+                
+                this.userName = cookieName || urlName || savedName || '';
+                
+                if (this.userName) {
+                    document.getElementById('userName').value = this.userName;
+                }
+                
+                // Check if we should auto-join
+                const hasRoomCode = urlParams.get('room') || urlParams.get('code');
+                const hasUserName = this.userName && this.userName.trim() !== '';
+                
+                if (hasRoomCode && hasUserName) {
+                    this.autoJoin = true;
+                    this.hideJoinControls();
+                    this.updateStatus('Auto-joining meeting...');
+                    // Auto-join after a short delay to ensure DOM is ready
+                    setTimeout(() => this.joinCall(), 500);
+                } else {
+                    this.showJoinControls();
+                    if (!hasRoomCode) {
+                        this.updateStatus('No room code provided in URL. Add ?room=yourroom or ?code=yourroom to the URL.');
+                    } else if (!hasUserName) {
+                        this.updateStatus('Please enter your name to join the meeting.');
+                    }
+                }
+                
+                document.getElementById('joinBtn').addEventListener('click', () => this.joinCall());
+                document.getElementById('leaveBtn').addEventListener('click', () => this.leaveCall());
+                document.getElementById('muteBtn').addEventListener('click', () => this.toggleAudio());
+                document.getElementById('videoBtn').addEventListener('click', () => this.toggleVideo());
+                
+                // Handle name input changes
+                const nameInput = document.getElementById('userName');
+                nameInput.addEventListener('input', (e) => {
+                    this.userName = e.target.value.trim();
+                    localStorage.setItem('videoCallUserName', this.userName);
+                    setCookie('userFullName', this.userName, 30); // Save to cookie for 30 days
+                    
+                    // Update name in real-time if already connected
+                    if (this.socket && this.socket.connected) {
+                        this.socket.emit('update-name', this.userName);
+                        this.updateLocalVideoLabel();
+                    }
+                });
+                
+                // Allow pressing Enter in name input to join
+                nameInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        this.joinCall();
+                    }
+                });
+            }
+            
+            hideJoinControls() {
+                document.getElementById('nameInput').style.display = 'none';
+                document.getElementById('joinBtn').style.display = 'none';
+            }
+            
+            showJoinControls() {
+                document.getElementById('nameInput').style.display = 'block';
+                document.getElementById('joinBtn').style.display = 'inline-block';
+            }
+            
+            async joinCall() {
+                try {
+                    this.updateStatus('Connecting...');
+                    
+                    // Check if getUserMedia is supported
+                    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                        throw new Error('Your browser does not support camera/microphone access. Please use a modern browser and ensure you are using HTTPS.');
+                    }
+                    
+                    // Get user media with fallback options
+                    try {
+                        this.localStream = await navigator.mediaDevices.getUserMedia({
+                            video: true,
+                            audio: true
+                        });
+                    } catch (mediaError) {
+                        // Try with reduced constraints
+                        console.warn('Full media access failed, trying audio only:', mediaError);
+                        try {
+                            this.localStream = await navigator.mediaDevices.getUserMedia({
+                                video: false,
+                                audio: true
+                            });
+                            this.updateStatus('Video unavailable, audio only');
+                        } catch (audioError) {
+                            // Try with no constraints (some browsers support this)
+                            console.warn('Audio access failed, trying legacy API:', audioError);
+                            this.localStream = await this.getLegacyUserMedia();
+                        }
+                    }
+                    
+                    // Get user name
+                    this.userName = document.getElementById('userName').value.trim();
+                    if (!this.userName) {
+                        this.userName = 'Anonymous';
+                    }
+                    localStorage.setItem('videoCallUserName', this.userName);
+                    setCookie('userFullName', this.userName, 30); // Save to cookie for 30 days
+                    
+                    // Add local video
+                    this.addVideoElement('local', this.localStream, this.userName + ' (You)');
+                    
+                    // Connect to server - use same origin as the page
+                    this.socket = io();
+                    this.setupSocketListeners();
+                    
+                    // Join room with user name
+                    this.socket.emit('join-room', { room: this.room, name: this.userName });
+                    
+                    // Start audio recording
+                    this.startAudioRecording();
+                    
+                    this.updateButtons(true);
+                    this.updateStatus('Connected to room');
+                    
+                    // Hide join controls after successful connection
+                    if (this.autoJoin) {
+                        this.hideJoinControls();
+                    }
+                    
+                } catch (error) {
+                    console.error('Error joining call:', error);
+                    let errorMessage = 'Error: Could not access camera/microphone. ';
+                    
+                    if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+                        errorMessage += 'Please use HTTPS or localhost for camera access.';
+                    } else if (error.name === 'NotAllowedError') {
+                        errorMessage += 'Please allow camera and microphone permissions.';
+                    } else if (error.name === 'NotFoundError') {
+                        errorMessage += 'No camera or microphone found.';
+                    } else {
+                        errorMessage += error.message || 'Unknown error occurred.';
+                    }
+                    
+                    this.updateStatus(errorMessage);
+                }
+            }
+            
+            // Legacy getUserMedia for older browsers
+            async getLegacyUserMedia() {
+                return new Promise((resolve, reject) => {
+                    const getUserMedia = navigator.getUserMedia || 
+                                       navigator.webkitGetUserMedia || 
+                                       navigator.mozGetUserMedia;
+                    
+                    if (!getUserMedia) {
+                        reject(new Error('getUserMedia is not supported in this browser'));
+                        return;
+                    }
+                    
+                    getUserMedia.call(navigator, {
+                        video: true,
+                        audio: true
+                    }, resolve, reject);
+                });
+            }
+            
+            leaveCall() {
+                if (this.socket) {
+                    this.socket.emit('leave-room', this.room);
+                    this.socket.disconnect();
+                }
+                
+                if (this.localStream) {
+                    this.localStream.getTracks().forEach(track => track.stop());
+                }
+                
+                // Close all peer connections
+                Object.values(this.peers).forEach(peer => peer.close());
+                this.peers = {};
+                this.userNames = {};
+                
+                // Stop audio recording
+                this.stopAudioRecording();
+                
+                // Clear videos
+                document.getElementById('videoGrid').innerHTML = '';
+                
+                this.updateButtons(false);
+                this.updateStatus('Disconnected');
+                document.getElementById('userCount').textContent = '0';
+                
+                // Show join controls again if not auto-join
+                if (!this.autoJoin) {
+                    this.showJoinControls();
+                }
+            }
+            
+            startAudioRecording() {
+                try {
+                    if (!this.localStream) {
+                        console.warn('No local stream available for recording');
+                        return;
+                    }
+                    
+                    // Create audio-only stream from local stream
+                    const audioTracks = this.localStream.getAudioTracks();
+                    if (audioTracks.length === 0) {
+                        console.warn('No audio tracks available for recording');
+                        return;
+                    }
+                    
+                    const audioStream = new MediaStream(audioTracks);
+                    
+                    // Configure MediaRecorder
+                    this.mediaRecorder = new MediaRecorder(audioStream, {
+                        mimeType: 'audio/webm;codecs=opus'
+                    });
+                    
+                    this.mediaRecorder.ondataavailable = (event) => {
+                        if (event.data.size > 0 && this.socket && this.socket.connected) {
+                            // Convert blob to base64 and send to server
+                            const reader = new FileReader();
+                            reader.onload = () => {
+                                const audioData = reader.result.split(',')[1]; // Remove data:audio/webm;base64, prefix
+                                this.socket.emit('audio-chunk', {
+                                    audioData: audioData,
+                                    speaker: this.userName,
+                                    timestamp: Date.now()
+                                });
+                            };
+                            reader.readAsDataURL(event.data);
+                        }
+                    };
+                    
+                    this.mediaRecorder.onerror = (event) => {
+                        console.error('MediaRecorder error:', event.error);
+                    };
+                    
+                    // Start recording and set up interval for chunks
+                    this.isRecording = true;
+                    this.startRecordingChunks();
+                    
+                    console.log('Audio recording started');
+                    
+                } catch (error) {
+                    console.error('Error starting audio recording:', error);
+                }
+            }
+            
+            startRecordingChunks() {
+                if (!this.mediaRecorder || !this.isRecording) return;
+                
+                // Start recording
+                this.mediaRecorder.start();
+                
+                // Set interval to capture chunks every 4 seconds
+                this.recordingInterval = setInterval(() => {
+                    if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+                        this.mediaRecorder.stop();
+                        // Restart recording for next chunk
+                        setTimeout(() => {
+                            if (this.mediaRecorder && this.isRecording) {
+                                this.mediaRecorder.start();
+                            }
+                        }, 100);
+                    }
+                }, 4000); // 4 second intervals
+            }
+            
+            stopAudioRecording() {
+                this.isRecording = false;
+                
+                if (this.recordingInterval) {
+                    clearInterval(this.recordingInterval);
+                    this.recordingInterval = null;
+                }
+                
+                if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+                    this.mediaRecorder.stop();
+                }
+                
+                this.mediaRecorder = null;
+                console.log('Audio recording stopped');
+            }
+            
+            setupSocketListeners() {
+                this.socket.on('user-joined', async (data) => {
+                    console.log('User joined:', data);
+                    this.userNames[data.userId] = data.name;
+                    await this.createPeerConnection(data.userId, true);
+                });
+                
+                this.socket.on('user-left', (userId) => {
+                    console.log('User left:', userId);
+                    if (this.peers[userId]) {
+                        this.peers[userId].close();
+                        delete this.peers[userId];
+                    }
+                    delete this.userNames[userId];
+                    this.removeVideoElement(userId);
+                    this.updateUserCount();
+                });
+                
+                this.socket.on('user-name-updated', (data) => {
+                    this.userNames[data.userId] = data.name;
+                    this.updateVideoLabel(data.userId, data.name);
+                });
+                
+                this.socket.on('offer', async (data) => {
+                    await this.handleOffer(data.userId, data.offer);
+                });
+                
+                this.socket.on('answer', async (data) => {
+                    await this.handleAnswer(data.userId, data.answer);
+                });
+                
+                this.socket.on('ice-candidate', async (data) => {
+                    await this.handleIceCandidate(data.userId, data.candidate);
+                });
+                
+                this.socket.on('room-users', (users) => {
+                    // Update user names for existing users
+                    users.forEach(user => {
+                        if (user.userId !== this.socket.id) {
+                            this.userNames[user.userId] = user.name;
+                            this.updateVideoLabel(user.userId, user.name);
+                        }
+                    });
+                    document.getElementById('userCount').textContent = users.length;
+                });
+                
+                this.socket.on('new-transcription', (transcription) => {
+                    this.addTranscription(transcription);
+                });
+            }
+            
+            async createPeerConnection(userId, createOffer = false) {
+                const peer = new RTCPeerConnection({
+                    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+                });
+                
+                this.peers[userId] = peer;
+                
+                // Add local stream to peer connection
+                this.localStream.getTracks().forEach(track => {
+                    peer.addTrack(track, this.localStream);
+                });
+                
+                // Handle incoming stream
+                peer.ontrack = (event) => {
+                    const remoteStream = event.streams[0];
+                    const userName = this.userNames[userId] || `User ${userId.substring(0, 6)}`;
+                    this.addVideoElement(userId, remoteStream, userName);
+                };
+                
+                // Handle ICE candidates
+                peer.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        this.socket.emit('ice-candidate', {
+                            userId: userId,
+                            candidate: event.candidate
+                        });
+                    }
+                };
+                
+                if (createOffer) {
+                    const offer = await peer.createOffer();
+                    await peer.setLocalDescription(offer);
+                    this.socket.emit('offer', { userId: userId, offer: offer });
+                }
+            }
+            
+            async handleOffer(userId, offer) {
+                await this.createPeerConnection(userId, false);
+                const peer = this.peers[userId];
+                
+                await peer.setRemoteDescription(offer);
+                const answer = await peer.createAnswer();
+                await peer.setLocalDescription(answer);
+                
+                this.socket.emit('answer', { userId: userId, answer: answer });
+            }
+            
+            async handleAnswer(userId, answer) {
+                const peer = this.peers[userId];
+                if (peer) {
+                    await peer.setRemoteDescription(answer);
+                }
+            }
+            
+            async handleIceCandidate(userId, candidate) {
+                const peer = this.peers[userId];
+                if (peer) {
+                    await peer.addIceCandidate(candidate);
+                }
+            }
+            
+            addVideoElement(id, stream, label) {
+                const existingVideo = document.getElementById(`video-${id}`);
+                if (existingVideo) {
+                    existingVideo.srcObject = stream;
+                    return;
+                }
+                
+                const videoContainer = document.createElement('div');
+                videoContainer.className = 'video-container';
+                videoContainer.innerHTML = `
+                    <video id="video-${id}" autoplay playsinline ${id === 'local' ? 'muted' : ''}></video>
+                    <div class="video-label">${label}</div>
+                `;
+                
+                document.getElementById('videoGrid').appendChild(videoContainer);
+                document.getElementById(`video-${id}`).srcObject = stream;
+                
+                this.updateUserCount();
+            }
+            
+            removeVideoElement(id) {
+                const video = document.getElementById(`video-${id}`);
+                if (video) {
+                    video.parentElement.remove();
+                }
+            }
+            
+            toggleAudio() {
+                if (this.localStream) {
+                    const audioTrack = this.localStream.getAudioTracks()[0];
+                    if (audioTrack) {
+                        audioTrack.enabled = !audioTrack.enabled;
+                        this.isAudioMuted = !audioTrack.enabled;
+                        document.getElementById('muteBtn').textContent = 
+                            this.isAudioMuted ? 'Unmute' : 'Mute';
+                    }
+                }
+            }
+            
+            toggleVideo() {
+                if (this.localStream) {
+                    const videoTrack = this.localStream.getVideoTracks()[0];
+                    if (videoTrack) {
+                        videoTrack.enabled = !videoTrack.enabled;
+                        this.isVideoOff = !videoTrack.enabled;
+                        document.getElementById('videoBtn').textContent = 
+                            this.isVideoOff ? 'Turn On Video' : 'Turn Off Video';
+                    }
+                }
+            }
+            
+            updateButtons(connected) {
+                document.getElementById('joinBtn').disabled = connected;
+                document.getElementById('leaveBtn').disabled = !connected;
+                document.getElementById('muteBtn').disabled = !connected;
+                document.getElementById('videoBtn').disabled = !connected;
+                document.getElementById('userName').disabled = connected;
+            }
+            
+            updateLocalVideoLabel() {
+                const localVideo = document.getElementById('video-local');
+                if (localVideo) {
+                    const label = localVideo.parentElement.querySelector('.video-label');
+                    if (label) {
+                        label.textContent = this.userName + ' (You)';
+                    }
+                }
+            }
+            
+            updateVideoLabel(userId, name) {
+                const video = document.getElementById(`video-${userId}`);
+                if (video) {
+                    const label = video.parentElement.querySelector('.video-label');
+                    if (label) {
+                        label.textContent = name;
+                    }
+                }
+            }
+            
+            updateStatus(message) {
+                document.getElementById('status').textContent = message;
+            }
+            
+            updateUserCount() {
+                const videoCount = document.getElementById('videoGrid').children.length;
+                document.getElementById('userCount').textContent = videoCount;
+            }
+            
+            addTranscription(transcription) {
+                const transcriptionList = document.getElementById('transcriptionList');
+                
+                // Remove placeholder text if it exists
+                if (transcriptionList.innerHTML.includes('Transcriptions will appear here...')) {
+                    transcriptionList.innerHTML = '';
+                }
+                
+                // Create transcription element
+                const transcriptionDiv = document.createElement('div');
+                transcriptionDiv.style.marginBottom = '8px';
+                transcriptionDiv.style.padding = '8px';
+                transcriptionDiv.style.borderLeft = '3px solid #6366f1';
+                transcriptionDiv.style.backgroundColor = '#fff';
+                transcriptionDiv.style.borderRadius = '4px';
+                
+                const timestamp = new Date(transcription.timestamp).toLocaleTimeString();
+                transcriptionDiv.innerHTML = `
+                    <div style="font-weight: 600; color: #374151; font-size: 13px;">
+                        ${transcription.speaker} <span style="color: #6b7280; font-weight: normal;">${timestamp}</span>
+                    </div>
+                    <div style="color: #111827; margin-top: 4px;">
+                        ${transcription.transcription}
+                    </div>
+                `;
+                
+                transcriptionList.appendChild(transcriptionDiv);
+                
+                // Auto-scroll to bottom
+                transcriptionList.scrollTop = transcriptionList.scrollHeight;
+                
+                // Limit to last 50 transcriptions to prevent memory issues
+                const transcriptions = transcriptionList.children;
+                if (transcriptions.length > 50) {
+                    transcriptionList.removeChild(transcriptions[0]);
+                }
+            }
+        }
+        
+        // Initialize when page loads
+        window.addEventListener('load', () => {
+            new VideoCall();
+        });
+    </script>
+</body>
+</html>

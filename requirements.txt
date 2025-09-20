@@ -1,0 +1,23 @@
+# TaskSync Dependencies
+
+# Cerebras Cloud SDK for AI interactions
+cerebras-cloud-sdk>=1.50.1
+
+# HTTP requests for GitHub API
+requests>=2.31.0
+
+# Video Call Dependencies
+Flask==2.3.3
+Flask-SocketIO==5.3.6
+Flask-CORS==4.0.0
+python-socketio==5.9.0
+
+# AssemblyAI for audio transcription
+assemblyai==0.17.0
+
+# Database and other utilities
+pymongo==4.5.0
+python-engineio==4.7.1
+eventlet==0.33.3
+openai==0.28.1
+python-dotenv==1.0.0
